@@ -54,6 +54,10 @@
   .floating-toggle .btn{ border-radius: 999px; padding:6px 10px; }
   .breadcrumb{ position:absolute; top:6px; left:8px; font-size:12px; color:var(--muted); background:rgba(0,0,0,0.25); padding:4px 8px; border-radius:8px; }
   .breadcrumb a{ color: var(--text); text-decoration: underline; cursor: pointer; }
+  #dayView{ position:fixed; top:0; left:0; width:100vw; height:100vh; overflow-y:auto; display:none; scroll-snap-type:y mandatory; z-index:30; }
+  #dayView .day{ width:100%; height:100vh; scroll-snap-align:start; }
+  #dayView .breadcrumb{ position:fixed; top:6px; left:8px; font-size:12px; color:var(--muted); background:rgba(0,0,0,0.25); padding:4px 8px; border-radius:8px; z-index:40; }
+  #dayView .breadcrumb a{ color: var(--text); text-decoration: underline; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -149,6 +153,10 @@
   </section>
 </main>
 
+<div id="dayView">
+  <div class="breadcrumb">Viewing <span id="dayYearLabel"></span> — <a id="dayBack">back to all years</a></div>
+</div>
+
 <div class="floating-toggle">
   <button class="btn" id="showStatusBtn" title="Show status" style="display:none;">Show status</button>
   <button class="btn" id="showControlsBtn" title="Show controls" style="display:none;">Show controls</button>
@@ -225,6 +233,9 @@ const showControlsBtn = document.getElementById('showControlsBtn');
 const breadcrumb = document.getElementById('breadcrumb');
 const yearLabel = document.getElementById('yearLabel');
 const backToAll = document.getElementById('backToAll');
+const dayView = document.getElementById('dayView');
+const dayYearLabel = document.getElementById('dayYearLabel');
+const dayBack = document.getElementById('dayBack');
 
 function recompute(){
   const birth = parseDateYYYYMMDD(document.getElementById('birth').value);
@@ -274,6 +285,15 @@ function recompute(){
   document.getElementById('daysRemain').textContent = formatNumber(daysRemain) + ' days';
   document.getElementById('awakeRemain').textContent = formatNumber(Math.round(awakeHoursRemain));
   document.getElementById('qaRemain').textContent = formatNumber(Math.round(qaHoursRemain));
+
+  if(viewMode === 'year'){
+    wrap.style.display = 'none';
+    renderDayView(selectedYear, birth, deathAge, nowMid);
+    return;
+  } else {
+    wrap.style.display = 'block';
+    dayView.style.display = 'none';
+  }
 
   // ---- Canvas sizing ----
   function adjustWrapHeight(){
@@ -503,7 +523,9 @@ function recompute(){
     }
   }
 
-  setupInteractions(birth, startYear, years, cell, rowGap, gutter, padding);
+  if(viewMode === 'life'){
+    setupInteractions(birth, startYear, years, cell, rowGap, gutter, padding);
+  }
 }
 
 // Hover + click
@@ -589,10 +611,45 @@ function setupInteractions(birth, startYear, years, cell, rowGap, gutter, paddin
   };
 }
 
+function renderDayView(year, birth, deathAge, nowMid){
+  dayView.style.display = 'block';
+  dayYearLabel.textContent = year;
+  Array.from(dayView.querySelectorAll('.day')).forEach(el=>el.remove());
+  const birthMid = new Date(birth); birthMid.setHours(12,0,0,0);
+  const deathDate = new Date(birth.getFullYear() + deathAge, birth.getMonth(), birth.getDate());
+  const deathMid = new Date(deathDate); deathMid.setHours(12,0,0,0);
+  const colorInactive = getComputedStyle(document.documentElement).getPropertyValue('--inactive').trim();
+  const vibrantPast = getComputedStyle(document.documentElement).getPropertyValue('--vibrant-past').trim();
+  const vibrantFuture = getComputedStyle(document.documentElement).getPropertyValue('--vibrant-future').trim();
+  const todayColor = getComputedStyle(document.documentElement).getPropertyValue('--today').trim();
+  const yearStart = new Date(year,0,1);
+  const yearEnd = new Date(year+1,0,1);
+  const daysInYear = daysBetween(yearStart, yearEnd);
+  for(let d=0; d<daysInYear; d++){
+    const date = addDays(yearStart, d);
+    const div = document.createElement('div');
+    div.className = 'day';
+    if(date < birthMid || date >= deathMid){
+      div.style.background = colorInactive;
+    } else {
+      const isPast = date < nowMid;
+      const base = isPast ? vibrantPast : vibrantFuture;
+      const muted = (ageOn(date, birth) < 18) || (ageOn(date, birth) >= 60);
+      div.style.background = (date.getTime() === nowMid.getTime()) ? todayColor : base;
+      if(muted && date.getTime() !== nowMid.getTime()) div.style.opacity = 0.35;
+    }
+    dayView.appendChild(div);
+  }
+}
+
 document.getElementById('backToAll').addEventListener('click', ()=>{
   viewMode = 'life'; selectedYear = null;
   document.getElementById('breadcrumb').style.display = 'none';
   recompute();
+});
+
+dayBack.addEventListener('click', ()=>{
+  viewMode = 'life'; selectedYear = null; recompute();
 });
 
 // Link controls
